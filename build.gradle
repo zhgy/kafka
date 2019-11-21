@@ -21,6 +21,12 @@ buildscript {
   repositories {
     maven{ url 'http://maven.aliyun.com/nexus/content/groups/public/' }
     maven{ url 'http://maven.aliyun.com/nexus/content/repositories/jcenter'}
+    mavenCentral()
+    jcenter()
+    maven {
+      url "https://plugins.gradle.org/m2/"
+    }
+
   }
   apply from: file('gradle/buildscript.gradle'), to: buildscript
   apply from: "$rootDir/gradle/dependencies.gradle"
@@ -51,6 +57,7 @@ allprojects {
   repositories {
     maven{ url 'http://maven.aliyun.com/nexus/content/groups/public/' }
     maven{ url 'http://maven.aliyun.com/nexus/content/repositories/jcenter'}
+    mavenCentral()
   }
   
   apply plugin: 'idea'
