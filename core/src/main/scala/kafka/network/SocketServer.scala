@@ -78,7 +78,7 @@ class SocketServer(val config: KafkaConfig,
                    val credentialProvider: CredentialProvider)
   extends Logging with KafkaMetricsGroup with BrokerReconfigurable {
 
-  private val maxQueuedRequests = config.queuedMaxRequests
+  private val maxQueuedRequests = config.queuedMaxRequests // 默认值是50
 
   private val logContext = new LogContext(s"[SocketServer brokerId=${config.brokerId}] ")
   this.logIdent = logContext.logPrefix
