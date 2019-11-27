@@ -56,7 +56,8 @@ import scala.util.control.ControlThrowable
 
 /**
  * Handles new connections, requests and responses to and from broker.
- * Kafka supports two types of request planes :
+ * 处理新连接、请求和响应
+ * Kafka supports two types of request   :
  *  - data-plane :
  *    - Handles requests from clients and other brokers in the cluster.
  *    - The threading model is
@@ -71,6 +72,20 @@ import scala.util.control.ControlThrowable
  *      1 Acceptor thread that handles new connections
  *      Acceptor has 1 Processor thread that has its own selector and read requests from the socket.
  *      1 Handler thread that handles requests and produce responses back to the processor thread for writing.
+ *
+ *      Kafka支持两种类型的请求：
+ *      data-plane:
+ *        - 处理来自clients和集群中brokers的请求
+ *        - 线程模式是：
+ *          每个listener使用一个Acceptor处理新连接；
+ *          Acceptor有N个processor线程，每个线程有自己的selector用于从sockets中读取请求；
+ *          M个handler线程用于处理请求和生成响应返回到processor用于写入
+ *      control-plane:
+ *        - 处理来自控制器的请求。
+ *        - 线程模式是：
+ *          一个Acceptor用于处理新连接；
+ *          Acceptor有一个processor线程，每个线程有自己的selector用于从sockets中读取请求；
+ *          一个handler线程用于处理请求和生成响应返回到processor用于写入
  */
 class SocketServer(val config: KafkaConfig,
                    val metrics: Metrics,
