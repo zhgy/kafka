@@ -21,6 +21,7 @@ import org.apache.kafka.common.protocol.ApiKeys;
 
 /**
  * Represents the min version and max version of an api key.
+ * 表示api key 的最小和最大版本
  *
  * NOTE: This class is intended for INTERNAL usage only within Kafka.
  */

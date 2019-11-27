@@ -572,13 +572,18 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     private final String clientId;
     private String groupId;
     private final ConsumerCoordinator coordinator;
+    // 用于 key 的反序列化器
     private final Deserializer<K> keyDeserializer;
+    // 用于 value 的反序列化器
     private final Deserializer<V> valueDeserializer;
     private final Fetcher<K, V> fetcher;
+    // 看起来还支持配置拦截器，用户可以用这个扩展吗？还是只有库内部用
     private final ConsumerInterceptors<K, V> interceptors;
 
     private final Time time;
+    // 用于通信的client，request -> response
     private final ConsumerNetworkClient client;
+    // 管理订阅的 topics、partitions、offset 的状态
     private final SubscriptionState subscriptions;
     private final ConsumerMetadata metadata;
     private final long retryBackoffMs;
@@ -589,6 +594,8 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
 
     // currentThread holds the threadId of the current thread accessing KafkaConsumer
     // and is used to prevent multi-threaded access
+	// 这个变量用于持有当前线程的线程ID，用于阻止多线程访问。（如类上面的文档所说，这个类不是线程安全的。
+	// 可能是出于性能的考量吧，直接拒绝多线程。。。）
     private final AtomicLong currentThread = new AtomicLong(NO_CURRENT_THREAD);
     // refcount is used to allow reentrant access by the thread who has acquired currentThread
     private final AtomicInteger refcount = new AtomicInteger(0);
@@ -670,12 +677,15 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     @SuppressWarnings("unchecked")
     private KafkaConsumer(ConsumerConfig config, Deserializer<K> keyDeserializer, Deserializer<V> valueDeserializer) {
         try {
+        	// 这个类用于提取 集群重均衡 相关的配置。
             GroupRebalanceConfig groupRebalanceConfig = new GroupRebalanceConfig(config,
                     GroupRebalanceConfig.ProtocolType.CONSUMER);
 
             this.groupId = groupRebalanceConfig.groupId;
             this.clientId = buildClientId(config.getString(CommonClientConfigs.CLIENT_ID_CONFIG), groupRebalanceConfig);
 
+            // 为了让几个相关联的组件log时能知道其他组件的一些信息，封装一个LogContext来持有这些需要共享的数据
+			// 这样可以让各个组件输出日志时都能拿到clientID、groupId等信息
             LogContext logContext;
 
             // If group.instance.id is set, we will append it to the log context.
@@ -704,11 +714,14 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             this.retryBackoffMs = config.getLong(ConsumerConfig.RETRY_BACKOFF_MS_CONFIG);
 
             // load interceptors and make sure they get clientId
+			// 反射加载配置中配置的拦截器
+			// 可以在 onConsume和onCommit两个时机进行增强
             Map<String, Object> userProvidedConfigs = config.originals();
             userProvidedConfigs.put(ConsumerConfig.CLIENT_ID_CONFIG, clientId);
             List<ConsumerInterceptor<K, V>> interceptorList = (List) (new ConsumerConfig(userProvidedConfigs, false)).getConfiguredInstances(ConsumerConfig.INTERCEPTOR_CLASSES_CONFIG,
                     ConsumerInterceptor.class);
             this.interceptors = new ConsumerInterceptors<>(interceptorList);
+            // 用户配置了就用用户配置的，否则用默认的（构造时传过来的）
             if (keyDeserializer == null) {
                 this.keyDeserializer = config.getConfiguredInstance(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, Deserializer.class);
                 this.keyDeserializer.configure(config.originals(), true);
@@ -739,6 +752,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
 
             FetcherMetricsRegistry metricsRegistry = new FetcherMetricsRegistry(Collections.singleton(CLIENT_ID_METRIC_TAG), metricGrpPrefix);
             ChannelBuilder channelBuilder = ClientUtils.createChannelBuilder(config, time);
+            // 两种隔离等级，read-uncommitted read-committed
             IsolationLevel isolationLevel = IsolationLevel.valueOf(
                     config.getString(ConsumerConfig.ISOLATION_LEVEL_CONFIG).toUpperCase(Locale.ROOT));
             Sensor throttleTimeSensor = Fetcher.throttleTimeSensor(metrics, metricsRegistry);
@@ -770,9 +784,11 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     config.getInt(ConsumerConfig.REQUEST_TIMEOUT_MS_CONFIG),
                     heartbeatIntervalMs); //Will avoid blocking an extended period of time to prevent heartbeat thread starvation
 
-            this.assignors = getAssignorInstances(config.getList(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG), config.originals());
+            // 配置文件中配置不同的分配分区的策略，这里反射生成对应的 分配器
+			this.assignors = getAssignorInstances(config.getList(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG), config.originals());
 
             // no coordinator will be constructed for the default (null) group id
+			// 集群环境需要coordinator来协调多个节点
             this.coordinator = groupId == null ? null :
                 new ConsumerCoordinator(groupRebalanceConfig,
                         logContext,
@@ -786,6 +802,10 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                         enableAutoCommit,
                         config.getInt(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG),
                         this.interceptors);
+            // 目前看到了三层抽象
+			// NetworkClient			：最基础的网络通信类，处理通信细节
+			// ConsumerNetworkClient	：针对Consumer的特化
+			// Fetcher
             this.fetcher = new Fetcher<>(
                     logContext,
                     this.client,
@@ -811,6 +831,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             this.kafkaConsumerMetrics = new KafkaConsumerMetrics(metrics, metricGrpPrefix);
 
             config.logUnused();
+            // 注册JMX 指标
             AppInfoParser.registerAppInfo(JMX_PREFIX, clientId, metrics, time.milliseconds());
             log.debug("Kafka consumer initialized");
         } catch (Throwable t) {
@@ -825,6 +846,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     }
 
     // visible for testing
+	// 用于测试的构造，所有组件都可以从外部直接传过来
     KafkaConsumer(LogContext logContext,
                   String clientId,
                   ConsumerCoordinator coordinator,

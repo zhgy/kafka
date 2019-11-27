@@ -27,6 +27,7 @@ import org.apache.kafka.common.Cluster;
  * <ul>
  * <li>If a partition is specified in the record, use it
  * <li>Otherwise choose the sticky partition that changes when the batch is full.
+ * 如果record中没有显式指定分区，就用这个分区器的方法来分区。使用轮询算法
  * 
  * NOTE: In constrast to the DefaultPartitioner, the record key is NOT used as part of the partitioning strategy in this 
  *       partitioner. Records with the same key are not guaranteed to be sent to the same partition.
