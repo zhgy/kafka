@@ -31,6 +31,7 @@ import java.util.Map;
 
 /**
  * The state of our connection to each node in the cluster.
+ * 集群到各个节点的连接的状态
  *
  */
 final class ClusterConnectionStates {

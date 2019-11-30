@@ -531,16 +531,23 @@ public class NetworkClient implements KafkaClient {
             // handle them immediately without waiting for Selector#poll.
             List<ClientResponse> responses = new ArrayList<>();
             handleAbortedSends(responses);
+            // 调用resp的callback
             completeResponses(responses);
             return responses;
         }
 
+        // 需要的话更新一下metadata
         long metadataTimeout = metadataUpdater.maybeUpdate(now);
         try {
             this.selector.poll(Utils.min(timeout, metadataTimeout, defaultRequestTimeoutMs));
         } catch (IOException e) {
             log.error("Unexpected error during I/O", e);
         }
+
+        // 标准的NIO处理模式
+        // 上面selector#poll
+        // 下面处理各种事件：write、read、disconnection、connection、timeout。。。
+        // 最后调响应的回调
 
         // process completed actions
         long updatedNow = this.time.milliseconds();

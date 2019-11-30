@@ -469,10 +469,13 @@ public class TransactionManager {
      * produce error to the user and let them abort the transaction and close the producer explicitly.
      */
     synchronized void resetProducerId() {
+        // 事务中不能重置
         if (isTransactional())
             throw new IllegalStateException("Cannot reset producer state for a transactional producer. " +
                     "You must either abort the ongoing transaction or reinitialize the transactional producer instead");
+        // 重置Epoch
         setProducerIdAndEpoch(ProducerIdAndEpoch.NONE);
+        // 清空持有的topic和partition信息
         topicPartitionBookkeeper.reset();
         this.partitionsWithUnresolvedSequences.clear();
     }

@@ -1,0 +1,30 @@
+@startuml
+class NetworkClient
+class KafkaClient
+NetworkClient <|-- KafkaClient
+
+class Sender
+Sender *-- KafkaClient
+class Fetcher
+Fetcher *-- KafkaClient
+
+class Partitioner
+class RecordAccumulator
+
+class Producer
+class KafkaProducer
+Producer <|-- KafkaProducer
+KafkaProducer *-- Sender
+KafkaProducer *-- Partitioner
+KafkaProducer *-- RecordAccumulator
+
+class Consumer
+class KafkaConsumer
+Consumer <|-- KafkaConsumer
+KafkaConsumer *-- Fetcher
+
+
+
+
+
+@enduml

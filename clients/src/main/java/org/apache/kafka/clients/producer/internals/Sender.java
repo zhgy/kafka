@@ -253,6 +253,7 @@ public class Sender implements Runnable {
         // okay we stopped accepting requests but there may still be
         // requests in the transaction manager, accumulator or waiting for acknowledgment,
         // wait until these are completed.
+        // 停止接受请求，但是还要处理事务管理器、积压、等待ack的请求需要处理
         while (!forceClose && ((this.accumulator.hasUndrained() || this.client.inFlightRequestCount() > 0) || hasPendingTransactionalRequests())) {
             try {
                 runOnce();
@@ -262,6 +263,7 @@ public class Sender implements Runnable {
         }
 
         // Abort the transaction if any commit or abort didn't go through the transaction manager's queue
+        // Abort 进行中的事务
         while (!forceClose && transactionManager != null && transactionManager.hasOngoingTransaction()) {
             if (!transactionManager.isCompleting()) {
                 log.info("Aborting incomplete transaction due to shutdown");
@@ -275,6 +277,7 @@ public class Sender implements Runnable {
         }
 
         if (forceClose) {
+            // 强制关闭！关闭事务，丢弃积压的批
             // We need to fail all the incomplete transactional requests and batches and wake up the threads waiting on
             // the futures.
             if (transactionManager != null) {
@@ -285,6 +288,7 @@ public class Sender implements Runnable {
             this.accumulator.abortIncompleteBatches();
         }
         try {
+            // 掐网线
             this.client.close();
         } catch (Exception e) {
             log.error("Failed to close network client", e);
@@ -300,6 +304,7 @@ public class Sender implements Runnable {
     void runOnce() {
         if (transactionManager != null) {
             try {
+                // TODO：事务部分比较复杂，以后再看
                 transactionManager.resetProducerIdIfNeeded();
 
                 if (!transactionManager.isTransactional()) {
@@ -322,6 +327,7 @@ public class Sender implements Runnable {
                     client.poll(retryBackoffMs, time.milliseconds());
                     return;
                 } else if (transactionManager.hasAbortableError()) {
+                    // 事务Abort，则清理积压的批
                     accumulator.abortUndrainedBatches(transactionManager.lastError());
                 }
             } catch (AuthenticationException e) {
@@ -331,6 +337,7 @@ public class Sender implements Runnable {
             }
         }
 
+        // 没事务，直接poll
         long currentTimeMs = time.milliseconds();
         long pollTimeout = sendProducerData(currentTimeMs);
         client.poll(pollTimeout, currentTimeMs);
