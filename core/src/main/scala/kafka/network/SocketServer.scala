@@ -457,6 +457,9 @@ private[kafka] abstract class AbstractServerThread(connectionQuotas: ConnectionQ
   // `shutdown()` is invoked before `startupComplete` and `shutdownComplete` if an exception is thrown in the constructor
   // (e.g. if the address is already in use). We want `shutdown` to proceed in such cases, so we first assign an open
   // latch and then replace it in `startupComplete()`.
+  // 如果一开始设置为1，一旦在构造函数里抛出异常，count就始终为1了，这时调shutdown会一直阻塞。
+  // 所以初始是0，等startupComplete再重新设置一个count为1的latch。
+  // 所以这里需要用 volatile 和 var
   @volatile private var shutdownLatch = new CountDownLatch(0)
 
   private val alive = new AtomicBoolean(true)
@@ -512,6 +515,9 @@ private[kafka] abstract class AbstractServerThread(connectionQuotas: ConnectionQ
 /**
  * Thread that accepts and configures new connections. There is one of these per endpoint.
  */
+/**
+ * 专门用来接收和配置新链接的线程。每个endpoint只需一个
+ * */
 private[kafka] class Acceptor(val endPoint: EndPoint,
                               val sendBufferSize: Int,
                               val recvBufferSize: Int,
@@ -573,6 +579,11 @@ private[kafka] class Acceptor(val endPoint: EndPoint,
       while (isRunning) {
         try {
 
+          /**
+           * 1. 每次循环都select等待新连接
+           * 2. 新连接们来啦
+           * 3. 遍历processors列表，调用他们的accept，直到找到一个愿意接收新连接的processor
+           * */
           val ready = nioSelector.select(500)
           if (ready > 0) {
             val keys = nioSelector.selectedKeys()
@@ -595,6 +606,7 @@ private[kafka] class Acceptor(val endPoint: EndPoint,
                       processor = synchronized {
                         // adjust the index (if necessary) and retrieve the processor atomically for
                         // correct behaviour in case the number of processors is reduced dynamically
+                        // 每次都取余，防止processors数量减少后导致 out of index
                         currentProcessorIndex = currentProcessorIndex % processors.length
                         processors(currentProcessorIndex)
                       }
@@ -634,6 +646,13 @@ private[kafka] class Acceptor(val endPoint: EndPoint,
         new InetSocketAddress(port)
       else
         new InetSocketAddress(host, port)
+
+    /**
+     * 1. open a channel
+     * 2. configure blocking
+     * 3. set buffer size if provided
+     * 4. bingding address
+     * */
     val serverChannel = ServerSocketChannel.open()
     serverChannel.configureBlocking(false)
     if (recvBufferSize != Selectable.USE_DEFAULT_BUFFER_SIZE)
@@ -653,6 +672,12 @@ private[kafka] class Acceptor(val endPoint: EndPoint,
    * Accept a new connection
    */
   private def accept(key: SelectionKey): Option[SocketChannel] = {
+    /**
+     * 标准的NIO处理新连接的流程
+     * 1. Accept the new connection
+     * 2. Increment the connection quotas count
+     * 3. Configure socket
+     * */
     val serverSocketChannel = key.channel().asInstanceOf[ServerSocketChannel]
     val socketChannel = serverSocketChannel.accept()
     try {
@@ -1026,6 +1051,11 @@ private[kafka] class Processor(val id: Int,
   def accept(socketChannel: SocketChannel,
              mayBlock: Boolean,
              acceptorIdlePercentMeter: com.yammer.metrics.core.Meter): Boolean = {
+    /**
+     * 1. 先使用offer尝试将新连接加入队列
+     * 2. 如果失败了且设置了允许阻塞，使用put方法阻塞，直到队列有空间接收
+     * 3. wakeup
+     * */
     val accepted = {
       if (newConnections.offer(socketChannel))
         true
