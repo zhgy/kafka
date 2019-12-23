@@ -301,6 +301,8 @@ class ReplicaManager(val config: KafkaConfig,
    * 2. There is no ISR Change in the last five seconds, or it has been more than 60 seconds since the last ISR propagation.
    * This allows an occasional ISR change to be propagated within a few seconds, and avoids overwhelming controller and
    * other brokers when large amount of ISR change occurs.
+   *
+   * 这个方法周期性（2.5s）被后台线程调用，用于传播ISR的变更。（就是存在了ZK里一个顺序持久化节点下）
    */
   def maybePropagateIsrChanges(): Unit = {
     val now = System.currentTimeMillis()
@@ -333,9 +335,15 @@ class ReplicaManager(val config: KafkaConfig,
   }
 
   def startup(): Unit = {
+    // ISR - In Sync Replicas：表示与Leader 副本保持一定程度同步的副本
     // start ISR expiration thread
+    // Replica 落后leader config.replicaLagTimeMaxMs x 1.5 后会被从ISR中移除。为啥是乘以1.5？下面的后台线程的周期是replicaLagTimeMaxMs
+    // 的一半时间，所以最差的情况就是一个完整的周期+半个周期
     // A follower can lag behind leader for up to config.replicaLagTimeMaxMs x 1.5 before it is removed from ISR
+
+    // 这个后台进程周期性运行 replicaLagTimeMaxMs/2， 每次运行找出out of sync的Replica并从ZK和内存中移除，所以叫shrink。
     scheduler.schedule("isr-expiration", maybeShrinkIsr _, period = config.replicaLagTimeMaxMs / 2, unit = TimeUnit.MILLISECONDS)
+    // 周期性传播ISR的变更到ZK
     scheduler.schedule("isr-change-propagation", maybePropagateIsrChanges _, period = 2500L, unit = TimeUnit.MILLISECONDS)
     scheduler.schedule("shutdown-idle-replica-alter-log-dirs-thread", shutdownIdleReplicaAlterLogDirsThread _, period = 10000L, unit = TimeUnit.MILLISECONDS)
 
@@ -1556,6 +1564,9 @@ class ReplicaManager(val config: KafkaConfig,
     partitionsToMakeFollower
   }
 
+  /**
+   * 遍历所有分区，找出out of sync 的Replica，从ISR集合（ZK和内存Set）中移除他们
+   * */
   private def maybeShrinkIsr(): Unit = {
     trace("Evaluating ISR list of partitions to see which replicas can be removed from the ISR")
 

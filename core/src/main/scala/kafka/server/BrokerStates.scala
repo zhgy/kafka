@@ -55,6 +55,7 @@ package kafka.server
  *
  * Custom states is also allowed for cases where there are custom kafka states for different scenarios.
  */
+// 使用 case object 模拟的枚举
 sealed trait BrokerStates { def state: Byte }
 case object NotRunning extends BrokerStates { val state: Byte = 0 }
 case object Starting extends BrokerStates { val state: Byte = 1 }

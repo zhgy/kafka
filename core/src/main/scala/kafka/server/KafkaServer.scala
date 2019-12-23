@@ -695,6 +695,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = Time.SYSTEM, threadNameP
    * @return A 2-tuple containing the brokerMetadata and a sequence of offline log directories.
    */
   private def getBrokerMetadataAndOfflineDirs: (BrokerMetadata, Seq[String]) = {
+    // 使用可变容器类型时加上类型前缀 mutable 是个好习惯
     val brokerMetadataMap = mutable.HashMap[String, BrokerMetadata]()
     val brokerMetadataSet = mutable.HashSet[BrokerMetadata]()
     val offlineDirs = mutable.ArrayBuffer.empty[String]
@@ -724,6 +725,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = Time.SYSTEM, threadNameP
         s"or partial data was manually copied from another broker. Found:\n${builder.toString()}"
       )
     } else if (brokerMetadataSet.size == 1)
+      // 既然set里只有一个metadata，为啥不直接 .head
       (brokerMetadataSet.last, offlineDirs)
     else
       (BrokerMetadata(-1, None), offlineDirs)
@@ -761,10 +763,13 @@ class KafkaServer(val config: KafkaConfig, time: Time = Time.SYSTEM, threadNameP
         s"If you moved your data, make sure your configured broker.id matches. " +
         s"If you intend to create a new broker, you should remove all data in your data directories (log.dirs).")
     else if (brokerMetadata.brokerId < 0 && brokerId < 0 && config.brokerIdGenerationEnable) // generate a new brokerId from Zookeeper
+      // broker.id 没有配置但是配置了brokerIdGenerationEnable，则从ZK生成一个
       generateBrokerId
     else if (brokerMetadata.brokerId >= 0) // pick broker.id from meta.properties
+      // 取 meta.properties 中存的broker id
       brokerMetadata.brokerId
     else
+      // 取config 中的
       brokerId
   }
 

@@ -78,8 +78,11 @@ class KafkaScheduler(val threads: Int,
       if(isStarted)
         throw new IllegalStateException("This scheduler has already been started!")
       executor = new ScheduledThreadPoolExecutor(threads)
+      // executor关闭后结束周期性任务
       executor.setContinueExistingPeriodicTasksAfterShutdownPolicy(false)
+      // executor关闭后结束延时任务
       executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false)
+      // 任务取消时立即移出队列
       executor.setRemoveOnCancelPolicy(true)
       executor.setThreadFactory(new ThreadFactory() {
                                   def newThread(runnable: Runnable): Thread = 

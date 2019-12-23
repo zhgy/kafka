@@ -73,6 +73,10 @@ class ZkPartitionStateStore(topicPartition: TopicPartition,
     newVersionOpt
   }
 
+  /**
+   * 1. 更新ZK中记录得ISR数据
+   * 2. 更新内存中的ISR集合并记录时间
+   * */
   private def updateIsr(controllerEpoch: Int, leaderAndIsr: LeaderAndIsr): Option[Int] = {
     val (updateSucceeded, newVersion) = ReplicationUtils.updateLeaderAndIsr(zkClient, topicPartition,
       leaderAndIsr, controllerEpoch)
@@ -411,6 +415,7 @@ class Partition(val topicPartition: TopicPartition,
       s"on broker $localBrokerId")
   }
 
+  /* 如果当前node是leader */
   def leaderLogIfLocal: Option[Log] = {
     log.filter(_ => isLeader)
   }
@@ -865,8 +870,14 @@ class Partition(val topicPartition: TopicPartition,
    */
   private def tryCompleteDelayedRequests(): Unit = delayedOperations.checkAndCompleteAll()
 
+  /**
+   * 1. 获取所有out of sync的Replica集合，从ISR中移除这些Replica（这个方法只会移除，增加的处理应该在其他地方）
+   * 2. 更新ZK（使用leaderIsrUpdateLock 的写锁）和内存中（synchronized）的ISR集合
+   * 3. increment high watermark
+   * */
   def maybeShrinkIsr(): Unit = {
     val leaderHWIncremented = inWriteLock(leaderIsrUpdateLock) {
+      // 处理的目标是 leader是当前node的Log
       leaderLogIfLocal match {
         case Some(leaderLog) =>
           val outOfSyncReplicaIds = getOutOfSyncReplicas(replicaLagTimeMaxMs)
