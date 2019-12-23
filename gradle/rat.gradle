@@ -85,7 +85,7 @@ class RatTask extends DefaultTask {
     try {
       System.setProperty("file.encoding", "UTF-8") //affects the output of the ant rat task
       generateXmlReport(reportDir)
-      printUnknownFiles()
+      // printUnknownFiles()
       generateHtmlReport()
     } finally {
       System.setProperty("file.encoding", origEncoding)
