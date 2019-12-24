@@ -155,8 +155,10 @@ class ZooKeeperClient(connectString: String,
       val responseQueue = new ArrayBlockingQueue[Req#Response](requests.size)
 
       requests.foreach { request =>
+        // 使用信号量对并发请求数量做了限制，所以达到最大数量时这里会阻塞
         inFlightRequests.acquire()
         try {
+          // 只有initialization和close的时候使用了writeLock，所以这个锁在正常情况都不会阻塞
           inReadLock(initializationLock) {
             send(request) { response =>
               responseQueue.add(response)
@@ -170,6 +172,10 @@ class ZooKeeperClient(connectString: String,
             throw e
         }
       }
+      // 因为send方法里使用的是异步版本的ZK接口，所以Seq[Req]基本都是在并行处理的。所以用信号量限制了一下最大的inFlight的请求；用
+      // countDownLatch来等待所有请求处理完成。
+      // TODO：异常的时候没有countDown，所以处理某个Req时发生异常会不会阻塞整个流程呢？
+      // 猜测：如果ZK所有异常都不抛出来，而是返回响应的Resp，这里就没有问题
       countDownLatch.await()
       responseQueue.asScala.toBuffer
     }

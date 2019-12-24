@@ -47,6 +47,11 @@ import scala.collection.{Map, Seq, mutable}
  * and returns instances of classes from the calling packages in some cases. This is not ideal, but it made it
  * easier to migrate away from `ZkUtils` (since removed). We should revisit this. We should also consider whether a
  * monolithic [[kafka.zk.ZkData]] is the way to go.
+ *
+ * 提供Kafka专用的高级操作接口
+ * 注释还提到这个接口由于历史原因，设计得并不符合单一职责原则（各种组件（控制器，配置，旧用户）都包含在这个类里面）
+ *
+ *
  */
 class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boolean, time: Time) extends AutoCloseable with
   Logging with KafkaMetricsGroup {
@@ -71,6 +76,8 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boo
   /**
    * Create a sequential persistent path. That is, the znode will not be automatically deleted upon client's disconnect
    * and a monotonically increasing number will be appended to its name.
+   *
+   * 创建持久化顺序节点。节点下线数据不会删除，其名字单调递增
    *
    * @param path the path to create (with the monotonically increasing number appended)
    * @param data the znode data
@@ -1685,6 +1692,14 @@ class KafkaZkClient private[zk] (zooKeeperClient: ZooKeeperClient, isSecure: Boo
   }
 
   private def retryRequestsUntilConnected[Req <: AsyncRequest](requests: Seq[Req]): Seq[Req#Response] = {
+    //     1. 调用zooKeeperClient.handleRequests 批量处理多个请求
+    //     2. 更新metric
+    //     3. 如果resp 序列中存在状态码为CONNECTIONLOSS的，找出这些Resp对应的Req；等 连接恢复，继续处理请求
+    //     4. 返回所有请求的结果
+
+    //    Req和Resp序列长度一致且有序，所以直接用zip配对；
+    //    一旦出现连接异常，其他成功了的Resp也得等着。所以一次别传太对Req
+    //  异常会存在Resp对象里
     val remainingRequests = new mutable.ArrayBuffer(requests.size) ++= requests
     val responses = new mutable.ArrayBuffer[Req#Response]
     while (remainingRequests.nonEmpty) {
