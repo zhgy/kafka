@@ -42,6 +42,9 @@ public class RoundRobinPartitioner implements Partitioner {
     /**
      * Compute the partition for the given record.
      *
+     * RoundRobin分区器
+     * 使用轮询算法，用一个concurrentmap维护topic到计数器的映射。每次计算时去除该topic的计数器，自增，对分区数量取模。
+     *
      * @param topic The topic name
      * @param key The key to partition on (or null if no key)
      * @param keyBytes serialized key to partition on (or null if no key)

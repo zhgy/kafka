@@ -42,6 +42,9 @@ public class DefaultPartitioner implements Partitioner {
     /**
      * Compute the partition for the given record.
      *
+     * 没提供key ：使用stickyPartitionCache.partition，实现是使用ThreadLocal的Random生成随机数，对分区数量取模；
+     * 提供了key：就算key的hashcode，对该主题的分区总数取模。
+     *
      * @param topic The topic name
      * @param key The key to partition on (or null if no key)
      * @param keyBytes serialized key to partition on (or null if no key)
