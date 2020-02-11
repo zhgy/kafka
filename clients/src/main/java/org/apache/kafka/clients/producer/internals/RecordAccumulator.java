@@ -61,6 +61,7 @@ import org.slf4j.Logger;
 /**
  * This class acts as a queue that accumulates records into {@link MemoryRecords}
  * instances to be sent to the server.
+ * TODO： 姑且称为累积器，将records缓存在MemoryRecords实例中待达到时间或者容量的阈值时压缩为一个请求一次发送
  * <p>
  * The accumulator uses a bounded amount of memory and append calls will block when that memory is exhausted, unless
  * this behavior is explicitly disabled.

@@ -28,6 +28,7 @@ public class NetworkSend extends ByteBufferSend {
     }
 
     private static ByteBuffer sizeBuffer(int size) {
+        // Send对象开头四个bytes用于存放size
         ByteBuffer sizeBuffer = ByteBuffer.allocate(4);
         sizeBuffer.putInt(size);
         sizeBuffer.rewind();

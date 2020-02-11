@@ -71,30 +71,38 @@ import static org.apache.kafka.common.record.RecordBatch.NO_TIMESTAMP;
 /**
  * The background thread that handles the sending of produce requests to the Kafka cluster. This thread makes metadata
  * requests to renew its view of the cluster and then sends produce requests to the appropriate nodes.
+ * TODO: 该后台线程用于处理生产者发送给Kafka集群的请求。这个线程发送元数据请求来更新集群元数据信息，然后发送生产者请求到合适的节点。
  */
 public class Sender implements Runnable {
 
     private final Logger log;
 
     /* the state of each nodes connection */
+    //TODO： 上面英文注释是旧字段的，应该更新了
+    /* 用于处理网络IO的client */
     private final KafkaClient client;
 
     /* the record accumulator that batches records */
+    /* Records累积器 */
     private final RecordAccumulator accumulator;
 
     /* the metadata for the client */
+    /* 生产者元数据 */
     private final ProducerMetadata metadata;
 
     /* the flag indicating whether the producer should guarantee the message order on the broker or not. */
+    /* 指示生产者是否需要保持message顺序 */
     private final boolean guaranteeMessageOrder;
 
     /* the maximum request size to attempt to send to the server */
     private final int maxRequestSize;
 
     /* the number of acknowledgements to request from the server */
+    /* 发送到server的request需要的ack数量 */
     private final short acks;
 
     /* the number of times to retry a failed request before giving up */
+    /* 请求失败时的重试次数 */
     private final int retries;
 
     /* the clock instance used for getting the time */

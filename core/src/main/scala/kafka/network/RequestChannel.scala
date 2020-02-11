@@ -272,10 +272,25 @@ object RequestChannel extends Logging {
   }
 }
 
+// TODO：
+/**
+ * 连接 SocketServer 和 RequestHandler的 Channel
+ * SocketServer 接收到Req就放在这个Channel里，RequestHandler会轮询从Channel取Req，并委托给API处理
+ * 处理完Req生成Resp对象，里面有产生这个请求的processor id，把Resp放入这个processor的专有队列中
+ * 1. SocketServer监听网络，将读取到的byte parse成Request对象
+ * 2. SocketServer call sendRequest 将Request放入Channel的队列中
+ * 3. RequestHandler call receiveRequest 取出Request
+ * 4. RequestHandler 根据Request里的api key选对应API处理Req
+ * 5. API 处理完Req 生成Response对象，call sendResponse 将响应放入Channel
+ * 6. sendResponse方法会选对应的processor，并将Response放入processor的responseQueue中
+ * 7. processor 将Resp序列化为byte发回去
+ * */
 class RequestChannel(val queueSize: Int, val metricNamePrefix : String) extends KafkaMetricsGroup {
   import RequestChannel._
   val metrics = new RequestChannel.Metrics
+  /* 有限阻塞队列，用于存储SocketServer收到的Req。Channel另一头的 RequestHandler 会从队列里取出Req去处理 */
   private val requestQueue = new ArrayBlockingQueue[BaseRequest](queueSize)
+
   private val processors = new ConcurrentHashMap[Int, Processor]()
   val requestQueueSizeMetricName = metricNamePrefix.concat(RequestQueueSizeMetric)
   val responseQueueSizeMetricName = metricNamePrefix.concat(ResponseQueueSizeMetric)
@@ -308,12 +323,17 @@ class RequestChannel(val queueSize: Int, val metricNamePrefix : String) extends 
   }
 
   /** Send a request to be handled, potentially blocking until there is room in the queue for the request */
+  /** TODO： SocketServer调用此方法来讲Req放入RequestChannel */
   def sendRequest(request: RequestChannel.Request): Unit = {
     requestQueue.put(request)
   }
 
   /** Send a response back to the socket server to be sent over the network */
   def sendResponse(response: RequestChannel.Response): Unit = {
+    // TODO：
+    // API处理Req生成的Resp会call这个方法来放入对应的processor的响应队列
+    // 1. 根据Resp里的processor ID从Map中取出processor
+    // 2. 简单判断processor状态，如果不是null，也就是说没被shutdown就将Resp放入它的responseQueue
     if (isTraceEnabled) {
       val requestHeader = response.request.header
       val message = response match {

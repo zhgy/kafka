@@ -726,20 +726,21 @@ private[kafka] object Processor {
 /**
  * Thread that processes all requests from a single connection. There are N of these running in parallel
  * each of which has its own selector
+ * Processor是对管理Selector的线程的抽象。系统中会有多个处理网络操作的Processor，每个Processor有自己的Selector和自己的responseQueue
  */
 private[kafka] class Processor(val id: Int,
                                time: Time,
                                maxRequestSize: Int,
-                               requestChannel: RequestChannel,
+                               requestChannel: RequestChannel, // 我很重要的
                                connectionQuotas: ConnectionQuotas,
                                connectionsMaxIdleMs: Long,
                                failedAuthenticationDelayMs: Int,
                                listenerName: ListenerName,
                                securityProtocol: SecurityProtocol,
-                               config: KafkaConfig,
+                               config: KafkaConfig, // 哪都有我
                                metrics: Metrics,
                                credentialProvider: CredentialProvider,
-                               memoryPool: MemoryPool,
+                               memoryPool: MemoryPool, // 管理Req和Resp的ByteBuf
                                logContext: LogContext,
                                connectionQueueSize: Int = ConnectionQueueSize) extends AbstractServerThread(connectionQuotas) with KafkaMetricsGroup {
 
@@ -754,6 +755,7 @@ private[kafka] class Processor(val id: Int,
     }
   }
 
+  // 用于网络连接的四元组 和 index
   private[network] case class ConnectionId(localHost: String, localPort: Int, remoteHost: String, remotePort: Int, index: Int) {
     override def toString: String = s"$localHost:$localPort-$remoteHost:$remotePort-$index"
   }

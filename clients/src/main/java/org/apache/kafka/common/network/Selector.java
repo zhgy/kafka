@@ -67,9 +67,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * nioSelector.connect(&quot;42&quot;, new InetSocketAddress(&quot;google.com&quot;, server.port), 64000, 64000);
  * </pre>
  *
+ * connect方法仅仅意味着初始化了连接，不代表进行了实际的连接
  * The connect call does not block on the creation of the TCP connection, so the connect method only begins initiating
  * the connection. The successful invocation of this method does not mean a valid connection has been established.
  *
+ * 发送请求，接收响应，处理连接完成和断开连接 都在poll调用时完成
  * Sending requests, receiving responses, processing connection completions, and disconnections on the existing
  * connections are all done using the <code>poll()</code> call.
  *
@@ -102,13 +104,18 @@ public class Selector implements Selectable, AutoCloseable {
     }
 
     private final Logger log;
+    // 包装Java原生 Selector
     private final java.nio.channels.Selector nioSelector;
     private final Map<String, KafkaChannel> channels;
     private final Set<KafkaChannel> explicitlyMutedChannels;
     private boolean outOfMemory;
+    // 完整的Send对象
     private final List<Send> completedSends;
+    // 完整的NetworkReceive对象
     private final List<NetworkReceive> completedReceives;
+    // 未尽的NetworkReceive
     private final Map<KafkaChannel, Deque<NetworkReceive>> stagedReceives;
+    //
     private final Set<SelectionKey> immediatelyConnectedKeys;
     private final Map<String, KafkaChannel> closingChannels;
     private Set<SelectionKey> keysWithBufferedRead;
@@ -249,6 +256,12 @@ public class Selector implements Selectable, AutoCloseable {
      */
     @Override
     public void connect(String id, InetSocketAddress address, int sendBufferSize, int receiveBufferSize) throws IOException {
+        // TODO
+        // 1. 创建SocketChannel
+        // 2. 配置Channel：设置非阻塞，缓冲区大小，setTcpNoDelay
+        // 3. 调用Channel的connect（因为是异步的，不一定就连上
+        // 4. 将Channel注册到selector。并包装成KafkaChannel，selectionKey的附件就是包装后的KafkaChannel
+        // 5. 检测一下，如果已经完成了连接，将key放入immediatelyConnectedKeys
         ensureNotRegistered(id);
         SocketChannel socketChannel = SocketChannel.open();
         SelectionKey key = null;
@@ -309,6 +322,7 @@ public class Selector implements Selectable, AutoCloseable {
      * </p>
      */
     public void register(String id, SocketChannel socketChannel) throws IOException {
+        // 这个方法是让服务端用的。服务端的结构是 Acceptor 接受连接，然后交给 Processor 进行读写
         ensureNotRegistered(id);
         registerChannel(id, socketChannel, SelectionKey.OP_READ);
         this.sensors.connectionCreated.record();
@@ -384,6 +398,10 @@ public class Selector implements Selectable, AutoCloseable {
      * @param send The request to send
      */
     public void send(Send send) {
+        // TODO：
+        // 从连接池和关闭的连接池取出到目标地址的Channel
+        // 如果对应的连接已经关闭了，将Send放入failedSends
+        // 否则放入Channel，并注册OP_WRITE事件
         String connectionId = send.destination();
         KafkaChannel channel = openOrClosingChannelOrFail(connectionId);
         if (closingChannels.containsKey(connectionId)) {
@@ -443,6 +461,7 @@ public class Selector implements Selectable, AutoCloseable {
             throw new IllegalArgumentException("timeout should be >= 0");
 
         boolean madeReadProgressLastCall = madeReadProgressLastPoll;
+        // 清空上次完成的IO事件 send， network-receive， connection， disconnections
         clear();
 
         boolean dataInBuffers = !keysWithBufferedRead.isEmpty();
@@ -450,6 +469,7 @@ public class Selector implements Selectable, AutoCloseable {
         if (hasStagedReceives() || !immediatelyConnectedKeys.isEmpty() || (madeReadProgressLastCall && dataInBuffers))
             timeout = 0;
 
+        // 当内存池有可用内存时，unmute channels
         if (!memoryPool.isOutOfMemory() && outOfMemory) {
             //we have recovered from memory pressure. unmute any channel not explicitly muted for other reasons
             log.trace("Broker no longer low on memory - unmuting incoming sockets");
@@ -461,12 +481,15 @@ public class Selector implements Selectable, AutoCloseable {
             outOfMemory = false;
         }
 
+        // 委托原生selector检查 ready 的key
         /* check ready keys */
         long startSelect = time.nanoseconds();
         int numReadyKeys = select(timeout);
         long endSelect = time.nanoseconds();
         this.sensors.selectTime.record(endSelect - startSelect, time.milliseconds());
 
+        // 调用pollSelectionKeys处理ready的IO。
+        // TODO：
         if (numReadyKeys > 0 || !immediatelyConnectedKeys.isEmpty() || dataInBuffers) {
             Set<SelectionKey> readyKeys = this.nioSelector.selectedKeys();
 
@@ -492,6 +515,7 @@ public class Selector implements Selectable, AutoCloseable {
         long endIo = time.nanoseconds();
         this.sensors.ioTime.record(endIo - endSelect, time.milliseconds());
 
+        // 关闭已延迟但现在准备关闭的频道
         // Close channels that were delayed and are now ready to be closed
         completeDelayedChannelClose(endIo);
 
@@ -1027,6 +1051,7 @@ public class Selector implements Selectable, AutoCloseable {
 
     /**
      * checks if there are any staged receives and adds to completedReceives
+     * TODO：将staged receives 转移到 completedReceives
      */
     private void addToCompletedReceives() {
         if (!this.stagedReceives.isEmpty()) {

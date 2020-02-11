@@ -90,6 +90,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * <P>
  * The producer is <i>thread safe</i> and sharing a single producer instance across threads will generally be faster than
  * having multiple instances.
+ * TODO： 线程安全的producer，通常多个线程共享一个实例要比使用多个实例性能更好。
  * <p>
  * Here is a simple example of using the producer to send records with strings containing sequential numbers as the key/value
  * pairs.
@@ -111,9 +112,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * The producer consists of a pool of buffer space that holds records that haven't yet been transmitted to the server
  * as well as a background I/O thread that is responsible for turning these records into requests and transmitting them
  * to the cluster. Failure to close the producer after use will leak these resources.
+ * TODO：Producer使用一个缓冲池来容纳records，一个后台IO线程负责将这些records转化为requests并发送到集群中。
  * <p>
  * The {@link #send(ProducerRecord) send()} method is asynchronous. When called it adds the record to a buffer of pending record sends
  * and immediately returns. This allows the producer to batch together individual records for efficiency.
+ * TODO：Send()方法是异步的，它仅仅将record添加到buffer中就直接返回。
  * <p>
  * The <code>acks</code> config controls the criteria under which requests are considered complete. The "all" setting
  * we have specified will result in blocking on the full commit of the record, the slowest but most durable setting.
@@ -238,7 +241,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     private final String clientId;
     // Visible for testing
     final Metrics metrics;
-    // 分区器：根据记录得key选择响应的分区
+    //TODO： 分区器：根据记录得key选择响应的分区
     private final Partitioner partitioner;
     private final int maxRequestSize;
     private final long totalMemorySize;
@@ -354,6 +357,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     Collections.singletonMap(ProducerConfig.CLIENT_ID_CONFIG, clientId));
             reporters.add(new JmxReporter(JMX_PREFIX));
             this.metrics = new Metrics(metricConfig, reporters, time);
+            // 根据配置的分区器类名，反射创建分区器。如果实现了Configurable接口，则使用config进行初始化
             this.partitioner = config.getConfiguredInstance(ProducerConfig.PARTITIONER_CLASS_CONFIG, Partitioner.class);
             long retryBackoffMs = config.getLong(ProducerConfig.RETRY_BACKOFF_MS_CONFIG);
             if (keySerializer == null) {
@@ -374,6 +378,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             }
 
             // load interceptors and make sure they get clientId
+            // 如果配置了拦截器，则反射加载拦截器
             userProvidedConfigs.put(ProducerConfig.CLIENT_ID_CONFIG, clientId);
             ProducerConfig configWithClientId = new ProducerConfig(userProvidedConfigs, false);
             List<ProducerInterceptor<K, V>> interceptorList = (List) configWithClientId.getConfiguredInstances(
@@ -382,6 +387,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 this.interceptors = interceptors;
             else
                 this.interceptors = new ProducerInterceptors<>(interceptorList);
+            // 创建和配置监听器集合
             ClusterResourceListeners clusterResourceListeners = configureClusterResourceListeners(keySerializer,
                     valueSerializer, interceptorList, reporters);
             this.maxRequestSize = config.getInt(ProducerConfig.MAX_REQUEST_SIZE_CONFIG);
@@ -389,10 +395,12 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             this.compressionType = CompressionType.forName(config.getString(ProducerConfig.COMPRESSION_TYPE_CONFIG));
 
             this.maxBlockTimeMs = config.getLong(ProducerConfig.MAX_BLOCK_MS_CONFIG);
+            // 创建和配置事务管理器
             this.transactionManager = configureTransactionState(config, logContext, log);
             int deliveryTimeoutMs = configureDeliveryTimeout(config, log);
 
             this.apiVersions = new ApiVersions();
+            // RecordAccumulator
             this.accumulator = new RecordAccumulator(logContext,
                     config.getInt(ProducerConfig.BATCH_SIZE_CONFIG),
                     this.compressionType,
@@ -419,6 +427,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 this.metadata.bootstrap(addresses, time.milliseconds());
             }
             this.errors = this.metrics.sensor("errors");
+            // 创建和配置sender，sender跑在IO线程中
             this.sender = newSender(logContext, kafkaClient, this.metadata);
             String ioThreadName = NETWORK_THREAD_PREFIX + " | " + clientId;
             this.ioThread = new KafkaThread(ioThreadName, this.sender, true);

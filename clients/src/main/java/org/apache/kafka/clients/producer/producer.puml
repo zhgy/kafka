@@ -1,0 +1,19 @@
+@startuml
+class BufferPool{
+	Deque<ByteBuffer> free
+	Deque<Condition> waiters
+	allocate(size)
+	deallocate(buf)
+}
+
+class RecordAccumulator{
+	BufferPool free
+	ApiVersions apiVersions
+	Map<TopicPartition, Deque<ProducerBatch>> batches
+	IncompleteBatches incomplete
+	Map<TopicPartition, Long> muted
+	TransactionManager transactionManager
+}
+
+RecordAccumulator -- BufferPool
+@enduml

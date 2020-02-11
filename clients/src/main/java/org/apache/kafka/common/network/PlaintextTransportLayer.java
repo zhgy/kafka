@@ -30,6 +30,9 @@ import java.security.Principal;
 
 import org.apache.kafka.common.security.auth.KafkaPrincipal;
 
+// 纯文本传输层。因为不需要加密，所以不需要buffer。
+// 这个类就本质上是 SelectionKey + SocketChannel。读写ByteBuf委托给SocketChannel，注册和取消注册selectionKey都会委托给SelectionKey
+// transferFrom 支持直接从FIleChannel发送文件到网卡，（zero-copy
 public class PlaintextTransportLayer implements TransportLayer {
     private final SelectionKey key;
     private final SocketChannel socketChannel;
@@ -212,6 +215,7 @@ public class PlaintextTransportLayer implements TransportLayer {
 
     @Override
     public long transferFrom(FileChannel fileChannel, long position, long count) throws IOException {
+        // 一些操作系统支持zero-copy
         return fileChannel.transferTo(position, count, socketChannel);
     }
 }

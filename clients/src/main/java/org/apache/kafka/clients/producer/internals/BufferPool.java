@@ -30,10 +30,11 @@ import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.metrics.stats.Meter;
 import org.apache.kafka.common.utils.Time;
 
-
 /**
  * A pool of ByteBuffers kept under a given memory limit. This class is fairly specific to the needs of the producer. In
  * particular it has the following properties:
+ * ByteBuffer池。两个用：1. 限制应用使用的最大内存量（totalMemory）；2. 如果需要分配的内存大小与池子规格（poolableSize）一致
+ * 则优先从池中取，使用完也会重新放进来。
  * <ol>
  * <li>There is a special "poolable size" and buffers of this size are kept in a free list and recycled
  * <li>It is fair. That is all memory is given to the longest waiting thread until it has sufficient memory. This
@@ -106,11 +107,14 @@ public class BufferPool {
         this.lock.lock();
         try {
             // check if we have a free buffer of the right size pooled
+            // 如果期望的buffer的大小刚好与池中buffer的规格一致，且池子不为空，直接返回一个
             if (size == poolableSize && !this.free.isEmpty())
                 return this.free.pollFirst();
 
             // now check if the request is immediately satisfiable with the
             // memory on hand or if we need to block
+            // 如果未池化的量加池化的量能满足需求，则丢弃池中buffer来扩充未池化量
+            // 否则创建Condition加入等待队列，等待可用量满足需求时重新尝试分配
             int freeListSize = freeSize() * this.poolableSize;
             if (this.nonPooledAvailableMemory + freeListSize >= size) {
                 // we have enough unallocated or pooled memory to immediately
@@ -146,6 +150,8 @@ public class BufferPool {
 
                         // check if we can satisfy this request from the free list,
                         // otherwise allocate memory
+                        // 如果尚未开始预占内存，且需求size与池规格相符，则直接分配
+                        // 否则，在迭代中逐步预占用，够了后退出循环
                         if (accumulated == 0 && size == this.poolableSize && !this.free.isEmpty()) {
                             // just grab a buffer from the free list
                             buffer = this.free.pollFirst();
@@ -193,6 +199,7 @@ public class BufferPool {
     /**
      * Allocate a buffer.  If buffer allocation fails (e.g. because of OOM) then return the size count back to
      * available memory and signal the next waiter if it exists.
+     * 分配ByteBuffer，如果分配失败则恢复可用内存的数值，并等待队列首部的线程（自己虽然分配失败了，但是要唤醒其他线程试试）
      */
     private ByteBuffer safeAllocateByteBuffer(int size) {
         boolean error = true;
@@ -222,6 +229,7 @@ public class BufferPool {
     /**
      * Attempt to ensure we have at least the requested number of bytes of memory for allocation by deallocating pooled
      * buffers (if needed)
+     * 通过释放free队列来提高可用内存的数值
      */
     private void freeUp(int size) {
         while (!this.free.isEmpty() && this.nonPooledAvailableMemory < size)
@@ -237,6 +245,8 @@ public class BufferPool {
      *             since the buffer may re-allocate itself during in-place compression
      */
     public void deallocate(ByteBuffer buffer, int size) {
+        // 如果buffer的大小与内存池规格匹配，则清理后放入free队列；否则仅仅恢复占用的大小
+        // 如果有线程在等待分配，则释放等待队列首的线程
         lock.lock();
         try {
             if (size == this.poolableSize && size == buffer.capacity()) {
@@ -288,6 +298,7 @@ public class BufferPool {
 
     /**
      * The number of threads blocked waiting on memory
+     * 等待内存分配的线程数量
      */
     public int queued() {
         lock.lock();
@@ -300,6 +311,7 @@ public class BufferPool {
 
     /**
      * The buffer size that will be retained in the free list after use
+     * 这个大小的ByteBuffer释放后会被缓存在 free list
      */
     public int poolableSize() {
         return this.poolableSize;
@@ -307,6 +319,7 @@ public class BufferPool {
 
     /**
      * The total memory managed by this pool
+     * 内存池管理的总的内存大小
      */
     public long totalMemory() {
         return this.totalMemory;

@@ -46,6 +46,7 @@ public class KafkaChannelTest {
         assertTrue(channel.hasSend());
         assertThrows(IllegalStateException.class, () -> channel.setSend(send));
 
+        // 为什么写4bytes之后剩余128？ NetworkSend会使用首四个byte存放size
         Mockito.when(transport.write(Mockito.any(ByteBuffer[].class))).thenReturn(4L);
         assertEquals(4L, channel.write());
         assertEquals(128, send.remaining());
