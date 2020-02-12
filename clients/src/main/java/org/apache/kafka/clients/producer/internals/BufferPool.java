@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.metrics.Metrics;
@@ -56,6 +57,7 @@ public class BufferPool {
     private final Metrics metrics;
     private final Time time;
     private final Sensor waitTime;
+    private boolean closed;
 
     /**
      * Create a new buffer pool
@@ -83,6 +85,7 @@ public class BufferPool {
                                                    metricGrpName,
                                                    "The total time an appender waits for space allocation.");
         this.waitTime.add(new Meter(TimeUnit.NANOSECONDS, rateMetricName, totalMetricName));
+        this.closed = false;
     }
 
     /**
@@ -105,6 +108,12 @@ public class BufferPool {
 
         ByteBuffer buffer = null;
         this.lock.lock();
+
+        if (this.closed) {
+            this.lock.unlock();
+            throw new KafkaException("Producer closed while allocating memory");
+        }
+
         try {
             // check if we have a free buffer of the right size pooled
             // 如果期望的buffer的大小刚好与池中buffer的规格一致，且池子不为空，直接返回一个
@@ -141,6 +150,9 @@ public class BufferPool {
                             timeNs = Math.max(0L, endWaitNs - startWaitNs);
                             recordWaitTime(timeNs);
                         }
+
+                        if (this.closed)
+                            throw new KafkaException("Producer closed while allocating memory");
 
                         if (waitingTimeElapsed) {
                             throw new TimeoutException("Failed to allocate memory within the configured max blocking time " + maxTimeToBlockMs + " ms.");
@@ -328,5 +340,20 @@ public class BufferPool {
     // package-private method used only for testing
     Deque<Condition> waiters() {
         return this.waiters;
+    }
+
+    /**
+     * Closes the buffer pool. Memory will be prevented from being allocated, but may be deallocated. All allocations
+     * awaiting available memory will be notified to abort.
+     */
+    public void close() {
+        this.lock.lock();
+        this.closed = true;
+        try {
+            for (Condition waiter : this.waiters)
+                waiter.signal();
+        } finally {
+            this.lock.unlock();
+        }
     }
 }

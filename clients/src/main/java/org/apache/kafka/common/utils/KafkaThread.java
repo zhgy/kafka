@@ -48,11 +48,7 @@ public class KafkaThread extends Thread {
         // JVM会在没有没有用户线程时退出。KafkaClient作为一个库，当然不能阻止JVM推出
         // 对于线程里未处理的异常，也要记录后吞掉。不能让用户应用挂掉
         setDaemon(daemon);
-        setUncaughtExceptionHandler(new UncaughtExceptionHandler() {
-            public void uncaughtException(Thread t, Throwable e) {
-                log.error("Uncaught exception in thread '{}':", name, e);
-            }
-        });
+        setUncaughtExceptionHandler((t, e) -> log.error("Uncaught exception in thread '{}':", name, e));
     }
 
 }
