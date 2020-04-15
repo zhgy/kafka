@@ -21,6 +21,7 @@ import org.apache.kafka.common.Configurable;
 /**
  * A plugin interface that allows you to intercept (and possibly mutate) the records received by the producer before
  * they are published to the Kafka cluster.
+ * 可在records发送到broker之前拦截处理
  * <p>
  * This class will get producer config properties via <code>configure()</code> method, including clientId assigned
  * by KafkaProducer if not specified in the producer config. The interceptor implementation needs to be aware that it will be
