@@ -19,11 +19,15 @@ import java.nio.charset.StandardCharsets
 
 buildscript {
   repositories {
-    mavenCentral()
-    jcenter()
-    maven {
-      url "https://plugins.gradle.org/m2/"
-    }
+//    mavenCentral()
+//    jcenter()
+//    maven {
+//      url "https://plugins.gradle.org/m2/"
+//    }
+    maven { url 'https://maven.aliyun.com/repository/public/' }
+    maven { url 'https://maven.aliyun.com/repository/central'}
+    maven { url 'https://maven.aliyun.com/repository/jcenter'}
+    maven { url 'https://maven.aliyun.com/repository/gradle-plugin'}
   }
   apply from: file('gradle/buildscript.gradle'), to: buildscript
   apply from: "$rootDir/gradle/dependencies.gradle"
