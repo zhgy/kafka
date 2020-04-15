@@ -1,0 +1,46 @@
+@startuml
+'Data
+interface Send{
+    writeTo(GatheringByteChannel)
+}
+class ByteBufferSend{
+    ByteBuffer[] buffers
+}
+class NetworkSend
+Send <|-- ByteBufferSend
+ByteBufferSend <|-- NetworkSend
+
+interface Receive
+class NetworkReceive
+Receive <|-- NetworkReceive
+
+'MemoryPool
+interface MemoryPool
+class SimpleMemoryPool
+MemoryPool <|-- SimpleMemoryPool
+class GarbageCollectedMemoryPool
+SimpleMemoryPool <|-- GarbageCollectedMemoryPool
+
+'Channel
+interface ScatteringByteChannel
+interface GatheringByteChannel
+interface TransportLayer
+ScatteringByteChannel <|-- TransportLayer
+GatheringByteChannel <|-- TransportLayer
+class PlaintextTransportLayer
+TransportLayer <|-- PlaintextTransportLayer
+class SslTransportLayer
+TransportLayer  <|-- SslTransportLayer
+
+class KafkaChannel{
+    Send
+    NetworkReceive
+    MemoryPool
+    TransportLayer
+}
+
+interface Selectable
+class Selector
+Selectable <|-- Selector
+
+@enduml
